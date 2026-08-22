@@ -1,0 +1,11 @@
+description: Configuration for the Zephyr learning application
+
+compatible: "course,settings"
+
+properties:
+  greeting:
+    type: string
+    required: true
+  tick-period-ms:
+    type: int
+    required: true

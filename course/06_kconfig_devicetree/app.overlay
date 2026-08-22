@@ -1,0 +1,14 @@
+/ {
+    aliases {
+        course-console = &uart0;
+    };
+};
+
+/ {
+    course_cfg: course-config {
+        compatible = "course,settings";
+        greeting = "RISC-V course";
+        tick-period-ms = <250>;
+    };
+};
+

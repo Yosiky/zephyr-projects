@@ -1,0 +1,10 @@
+mainmenu "Zephyr learning application"
+
+config COURSE_TICK_PERIOD_MS
+    int "Application tick period in milliseconds"
+    range 100 5000
+    default 500
+    help
+      Period used by the application's periodic policy.
+
+source "Kconfig.zephyr"
