@@ -26,59 +26,78 @@
 | 9 | Проверка качества | далее |
 | 10 | Итоговый мини-проект | далее |
 
-## Текущий урок: 15 — UART-команды в главном потоке
+## Текущий урок: 16 — чистый parser команд
 
 ### Цель
 
-Собрать отдельные UART-байты, полученные ISR, в строку и обработать простые
-команды в обычном потоке. ISR из `13_uart_irq` остаётся коротким и неизменным.
+Отделить решение «какая команда введена» от UART и вывода текста. Чистая
+функция parser не зависит от Zephyr, устройства UART, `atomic_t` или глобальных
+переменных; это сделает её простой для unit-тестирования.
 
 ### Задание
 
-Создайте `14_uart_commands` как копию `13_uart_irq`. Оставьте ISR, `rx_bytes`
-и `atomic_t dropped`, но замените echo-цикл в `main()` на сборщик строки.
+Создайте `15_command_parser` как копию `14_uart_commands`. Перед переносом
+исправьте базовый UART-цикл: ограничение `COMMAND_MAX_SIZE - 1`, терминатор без
+`length++`, игнорирование `\n` и echo backspace только при `length > 0`.
 
-Добавьте helper для отправки строк через тот же UART:
+Создайте `src/command_parser.h`:
 
 ```c
-static void uart_write(const struct device *uart, const char *text)
+#ifndef COMMAND_PARSER_H
+#define COMMAND_PARSER_H
+
+enum command_id {
+    COMMAND_HELP,
+    COMMAND_STATUS,
+    COMMAND_UNKNOWN,
+};
+
+enum command_id command_parse(const char *text);
+
+#endif
+```
+
+Создайте `src/command_parser.c`:
+
+```c
+#include "command_parser.h"
+
+#include <string.h>
+
+enum command_id command_parse(const char *text)
 {
-    while (*text != '\0') {
-        uart_poll_out(uart, *text++);
+    if (strcmp(text, "help") == 0) {
+        return COMMAND_HELP;
     }
+
+    if (strcmp(text, "status") == 0) {
+        return COMMAND_STATUS;
+    }
+
+    return COMMAND_UNKNOWN;
 }
 ```
 
-В главном потоке определите буфер и длину:
+В `CMakeLists.txt` добавьте `src/command_parser.c` к `target_sources()`. В
+`main.c` замените поиск в массиве `commands` на `switch (command_parse(command))`.
+Только `main.c` решает, какой текст вывести и как получить `dropped`.
 
-```c
-char command[32];
-size_t length = 0;
-```
-
-После каждого `k_msgq_get(&rx_bytes, &byte, K_FOREVER)`:
-
-1. При `byte == '\r'` завершите строку нулевым байтом и напечатайте перевод
-   строки через `uart_write(uart, "\r\n")`.
-2. Выполните `help`, `status` или ответьте `Unknown command`.
-3. Сбросьте `length = 0` и выведите новое приглашение `> `.
-4. При `byte == 127` или `byte == '\b'` удалите последний символ, если он
-   есть, и отобразите удаление через `"\b \b"`.
-5. Для печатаемых символов добавляйте байт в `command`, пока
-   `length < sizeof(command) - 1`, и сразу echo-выводите его.
-6. При переполнении буфера не записывайте за его пределы: можно вывести bell
-   (`'\a'`) или проигнорировать новые символы до Enter.
-
-`help` должен вывести список `help` и `status`. `status` должен вывести текущее
-значение `atomic_get(&dropped)`. Для сравнения строк разрешено использовать
-`strcmp()` из `<string.h>`.
+Проверьте в QEMU команды `help`, `status`, пустую строку и `unknown`.
 
 ### Проверка понимания
 
-1. Почему нулевой байт добавляется только после получения Enter, а не после
-   каждого символа?
-2. Почему проверка `length < sizeof(command) - 1` предотвращает overflow?
-3. Почему обрабатывать backspace нужно в главном потоке, а не в UART ISR?
+1. Почему `command_parse()` не должна получать `const struct device *uart`?
+2. Почему счётчик `dropped` не должен читаться внутри parser?
+3. Как такой parser можно протестировать без QEMU и без запуска Zephyr?
+
+### Результат проверки
+
+`command_parser.c` не зависит от Zephyr и правильно подключён в CMake. В
+`main.c` ещё нужно заменить `command[length++] = '\0'` на
+`command[length] = '\0'`: иначе после 31 символа Enter записывает терминатор
+за границы `command[32]`. Также игнорируйте `\n` и echo backspace выполняйте
+только при `length > 0`. Для `status` используйте `atomic_get()`, если команда
+показывает текущее значение, а не намеренно сбрасывает интервал счётчика.
 
 ## Журнал занятий
 
@@ -186,9 +205,29 @@ size_t length = 0;
 - Следующий шаг: собрать UART-байты в строку и реализовать команды `help` и
   `status` в главном потоке.
 
+### 28. Проверка UART-команд — 2026-09-20
+
+- Сборка `14_uart_commands` проходит.
+- Команды `help` и `status` вынесены из ISR в главный поток.
+- Требуется исправить off-by-one при терминаторе строки и обработать `\n` /
+  пустой backspace без лишнего echo.
+
+### 29. Переход к parser команд — 2026-09-20
+
+- UART ISR и главный поток оставлены транспортным слоем; обработка команд
+  переносится в чистую функцию без зависимостей от Zephyr.
+- Исправления границы строкового буфера остаются обязательной частью нового
+  приложения.
+
+### 30. Проверка parser команд — 2026-09-20
+
+- Parser не зависит от UART или Zephyr и добавлен в `target_sources()`.
+- В основной UART-цикл перенеслись off-by-one при нулевом терминаторе,
+  неигнорируемый `\n` и echo пустого backspace; их нужно исправить до тестов.
+
 ## Текущая точка
 
-**Сейчас:** выполнить `14_uart_commands`: строковый буфер и команды `help`,
-`status` через UART.
+**Сейчас:** выполнить `15_command_parser`: вынести распознавание `help` и
+`status` в независимый модуль.
 
-**После этого:** отделить разбор команд от UART-транспорта и добавить тесты.
+**После этого:** написать unit-тесты для parser без QEMU и UART.
