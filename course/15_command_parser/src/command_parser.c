@@ -12,5 +12,9 @@ enum command_id command_parse(const char *text)
         return COMMAND_STATUS;
     }
 
+    if (strcmp(text, "reset") == 0) {
+        return COMMAND_RESET;
+    }
+
     return COMMAND_UNKNOWN;
 }

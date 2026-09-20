@@ -63,7 +63,7 @@ static int exec_command_status()
 	const struct device *uart = DEVICE_DT_GET(UART_NODE);
 	const size_t num_size = 32;
 	char num[num_size];
-	const atomic_val_t value = atomic_clear(&dropped);
+	const atomic_val_t value = atomic_get(&dropped);
 	snprintf(num, num_size, "%ld", value);
 
 	uart_write(uart, "Count of dropped symbols is ");
@@ -72,9 +72,19 @@ static int exec_command_status()
 	return 0;
 }
 
+static int exec_command_reset()
+{
+	const struct device *uart = DEVICE_DT_GET(UART_NODE);
+
+	atomic_set(&dropped, 0);
+	uart_write(uart, "Dropped counter reset\r\n");
+	return 0;
+}
+
 static const struct command_info_t commands[] = {
 	[COMMAND_HELP] = {.name = "help", .helper = exec_command_help},
 	[COMMAND_STATUS] = {.name = "status", .helper = exec_command_status},
+	[COMMAND_RESET] = {.name = "reset", .helper = exec_command_reset},
 };
 
 static int exec_command(const char *command)
@@ -86,7 +96,7 @@ static int exec_command(const char *command)
 		if (commands[command_idx].helper) {
 			return commands[command_idx].helper();
 		}
-	    uart_write(uart, "Command function is not implemented yet.\n");
+		uart_write(uart, "Command function is not implemented yet.\n");
 	}
 
 	return -1;

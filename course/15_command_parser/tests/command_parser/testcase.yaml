@@ -1,0 +1,8 @@
+tests:
+  course.command_parser:
+    platform_allow:
+      - qemu_riscv64
+    tags:
+      - course
+      - unit
+

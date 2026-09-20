@@ -4,6 +4,7 @@
 enum command_id {
     COMMAND_HELP,
     COMMAND_STATUS,
+    COMMAND_RESET,
     COMMAND_UNKNOWN,
 };
 
